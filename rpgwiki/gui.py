@@ -13,6 +13,8 @@ from PyQt5.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QSplitter,
+    QStackedWidget,
+    QLineEdit,
     QAction,
     QToolBar,
 )
@@ -20,7 +22,7 @@ from PyQt5.QtWidgets import (
 from .formatter import format_content
 
 from .parser import scan_folder, scan_headers, KeywordTarget, HeaderEntry
-from .search import SearchDialog
+from .search import SearchPage
 from .config import Config, load_config, save_config
 
 
@@ -37,14 +39,14 @@ class WikiApp(QMainWindow):
         self.config_data: Config = load_config()
         self.keyword_map: Dict[str, KeywordTarget] = {}
         self.headers: list[HeaderEntry] = []
-        self.search_dialog: SearchDialog | None = None
+        self.search_page: SearchPage | None = None
 
         self.history_back: list[str] = []
         self.history_forward: list[str] = []
         self.current_file: str | None = None
 
         self._build_gui()
-        self.installEventFilter(self)
+        QApplication.instance().installEventFilter(self)
         self._load_saved_folders()
 
     # Event filter for mouse and keyboard navigation
@@ -64,6 +66,8 @@ class WikiApp(QMainWindow):
                 self.go_forward()
                 return True
             if event.key() in (Qt.Key_Space, Qt.Key_Up):
+                if isinstance(obj, QLineEdit):
+                    return False
                 self.show_search()
                 return True
         return super().eventFilter(obj, event)
@@ -114,19 +118,27 @@ class WikiApp(QMainWindow):
         self.tree.itemClicked.connect(self._on_select)
         splitter.addWidget(self.tree)
 
+        self.content_stack = QStackedWidget()
         self.text = QTextBrowser()
         self.text.setOpenExternalLinks(False)
         self.text.anchorClicked.connect(self._on_anchor_clicked)
-        splitter.addWidget(self.text)
+        self.content_stack.addWidget(self.text)
+        splitter.addWidget(self.content_stack)
 
         splitter.setStretchFactor(1, 1)
         self.setCentralWidget(splitter)
         self._update_nav_actions()
 
+    def show_content(self) -> None:
+        """Display the main text browser."""
+        self.content_stack.setCurrentWidget(self.text)
+
     def show_search(self) -> None:
-        if not self.search_dialog:
-            self.search_dialog = SearchDialog(self)
-        self.search_dialog.open()
+        if not self.search_page:
+            self.search_page = SearchPage(self)
+            self.content_stack.addWidget(self.search_page)
+        self.content_stack.setCurrentWidget(self.search_page)
+        self.search_page.open()
 
     def _update_nav_actions(self) -> None:
         self.back_action.setEnabled(bool(self.history_back))
@@ -235,6 +247,7 @@ class WikiApp(QMainWindow):
 
         html = format_content(content, self.keyword_map, self.config_data)
         self.text.setHtml(html)
+        self.show_content()
         self.text.document().clearUndoRedoStacks()
         self._update_nav_actions()
 
