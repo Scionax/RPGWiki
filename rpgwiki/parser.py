@@ -3,6 +3,14 @@ import re
 from dataclasses import dataclass
 from typing import Dict, Tuple, List
 
+
+@dataclass
+class HeaderEntry:
+    file: str
+    line: int
+    text: str
+    preview: str
+
 @dataclass
 class KeywordTarget:
     file: str
@@ -89,3 +97,31 @@ def scan_folder(folder: str) -> Dict[str, KeywordTarget]:
                                 keyword_map[kw] = KeywordTarget(path, lineno, text)
                             # duplicates ignored; could log warning
     return keyword_map
+
+
+def scan_headers(folder: str) -> List[HeaderEntry]:
+    """Return all headers within a folder."""
+    headers: List[HeaderEntry] = []
+    for root, _, files in os.walk(folder):
+        for f in files:
+            if not f.lower().endswith('.md') or f.startswith('_'):
+                continue
+            path = os.path.join(root, f)
+            try:
+                with open(path, 'r', encoding='utf-8', errors='ignore') as fp:
+                    lines = fp.readlines()
+            except OSError:
+                continue
+            for lineno, line in enumerate(lines, 1):
+                if line.lstrip().startswith('#'):
+                    text, _ = parse_header(line)
+                    snippet = ' '.join(l.strip() for l in lines[lineno:lineno + 3])
+                    headers.append(
+                        HeaderEntry(
+                            file=path,
+                            line=lineno,
+                            text=text,
+                            preview=snippet[:120],
+                        )
+                    )
+    return headers
