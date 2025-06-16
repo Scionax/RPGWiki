@@ -24,12 +24,22 @@ class WikiApp(tk.Tk):
         self.history_forward: list[str] = []
         self.current_file: str | None = None
 
-        # mouse back/forward bindings
-        self.bind('<Button-8>', lambda e: self.go_back())
-        self.bind('<Button-9>', lambda e: self.go_forward())
+        # mouse back/forward bindings (may not exist on all platforms)
+        self._bind_navigation_buttons()
 
         self._build_gui()
         self._load_saved_folders()
+
+    def _bind_navigation_buttons(self) -> None:
+        """Bind mouse navigation buttons if supported by Tk."""
+        bindings = [('<Button-8>', '<Button-9>'), ('<XButton1>', '<XButton2>')]
+        for back_seq, fwd_seq in bindings:
+            try:
+                self.bind(back_seq, lambda e: self.go_back())
+                self.bind(fwd_seq, lambda e: self.go_forward())
+                return
+            except tk.TclError:
+                continue
 
     def _build_gui(self):
         self.columnconfigure(1, weight=1)
