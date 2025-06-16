@@ -3,7 +3,7 @@ import sys
 from typing import Dict
 
 from PyQt5.QtCore import Qt, QEvent, QUrl
-from PyQt5.QtGui import QTextCursor
+
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -246,11 +246,8 @@ class WikiApp(QMainWindow):
                     break
         if target:
             self.open_file(target.file)
-            block = self.text.document().findBlockByLineNumber(target.line - 1)
-            cursor = QTextCursor(block)
-            self.text.setTextCursor(cursor)
-            bar = self.text.verticalScrollBar()
-            bar.setValue(self.text.cursorRect(cursor).top())
+            anchor = f"ln{target.line}"
+            self.text.scrollToAnchor(anchor)
 
 
 def main() -> None:
