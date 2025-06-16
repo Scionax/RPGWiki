@@ -19,7 +19,8 @@ from PyQt5.QtWidgets import (
 
 from .formatter import format_content
 
-from .parser import scan_folder, KeywordTarget
+from .parser import scan_folder, scan_headers, KeywordTarget, HeaderEntry
+from .search import SearchDialog
 from .config import Config, load_config, save_config
 
 
@@ -35,6 +36,8 @@ class WikiApp(QMainWindow):
 
         self.config_data: Config = load_config()
         self.keyword_map: Dict[str, KeywordTarget] = {}
+        self.headers: list[HeaderEntry] = []
+        self.search_dialog: SearchDialog | None = None
 
         self.history_back: list[str] = []
         self.history_forward: list[str] = []
@@ -59,6 +62,9 @@ class WikiApp(QMainWindow):
                 return True
             if event.key() == Qt.Key_Right:
                 self.go_forward()
+                return True
+            if event.key() in (Qt.Key_Space, Qt.Key_Up):
+                self.show_search()
                 return True
         return super().eventFilter(obj, event)
 
@@ -112,6 +118,11 @@ class WikiApp(QMainWindow):
         splitter.setStretchFactor(1, 1)
         self.setCentralWidget(splitter)
         self._update_nav_actions()
+
+    def show_search(self) -> None:
+        if not self.search_dialog:
+            self.search_dialog = SearchDialog(self)
+        self.search_dialog.open()
 
     def _update_nav_actions(self) -> None:
         self.back_action.setEnabled(bool(self.history_back))
@@ -196,11 +207,14 @@ class WikiApp(QMainWindow):
 
     def rescan(self) -> None:
         self.keyword_map.clear()
+        self.headers.clear()
         if self.config_data.world_dir:
             self.keyword_map.update(scan_folder(self.config_data.world_dir))
+            self.headers.extend(scan_headers(self.config_data.world_dir))
         if self.config_data.campaign_dir:
             camp_map = scan_folder(self.config_data.campaign_dir)
             self.keyword_map.update(camp_map)
+            self.headers.extend(scan_headers(self.config_data.campaign_dir))
 
     def open_file(self, path: str, add_history: bool = True) -> None:
         if add_history and self.current_file and path != self.current_file:
