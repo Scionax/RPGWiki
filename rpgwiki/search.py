@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, TYPE_CHECKING
 
 from PyQt5.QtCore import Qt, QUrl
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QTextBrowser
 
 from .parser import HeaderEntry
+
+if TYPE_CHECKING:  # pragma: no cover - used for type hints
+    from .gui import WikiApp
 
 
 class SearchPage(QWidget):
@@ -39,7 +42,7 @@ class SearchPage(QWidget):
         query = self.edit.text().strip()
         if not query:
             return
-        app = self.parent()  # WikiApp
+        app: WikiApp = self.window()  # type: ignore[assignment]
         case = app.config_data.case_sensitive
         search = query if case else query.lower()
         full: List[HeaderEntry] = []
@@ -71,7 +74,7 @@ class SearchPage(QWidget):
             self._open(self.results[idx])
 
     def _open(self, entry: HeaderEntry) -> None:
-        app = self.parent()  # WikiApp
+        app: WikiApp = self.window()  # type: ignore[assignment]
         app.open_file(entry.file)
         anchor = f"ln{entry.line}"
         app.text.scrollToAnchor(anchor)
