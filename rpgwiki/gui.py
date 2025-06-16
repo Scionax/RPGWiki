@@ -35,11 +35,21 @@ class WikiApp(tk.Tk):
         bindings = [('<Button-8>', '<Button-9>'), ('<XButton1>', '<XButton2>')]
         for back_seq, fwd_seq in bindings:
             try:
-                self.bind(back_seq, lambda e: self.go_back())
-                self.bind(fwd_seq, lambda e: self.go_forward())
+                self.bind(back_seq, lambda e, seq=back_seq: self._on_nav_button(seq, True))
+                self.bind(fwd_seq, lambda e, seq=fwd_seq: self._on_nav_button(seq, False))
+                print(f"Bound navigation buttons: back {back_seq}, forward {fwd_seq}")
                 return
             except tk.TclError:
                 continue
+        print("Navigation buttons not supported")
+
+    def _on_nav_button(self, seq: str, back: bool) -> None:
+        """Handle mouse navigation button press."""
+        print(f"Navigation button pressed: {seq} -> {'back' if back else 'forward'}")
+        if back:
+            self.go_back()
+        else:
+            self.go_forward()
 
     def _build_gui(self):
         self.columnconfigure(1, weight=1)
@@ -94,13 +104,31 @@ class WikiApp(tk.Tk):
             entries = sorted(os.listdir(path))
         except OSError:
             return
+
+        dirs: list[tuple[str, str]] = []
+        files: list[tuple[str, str]] = []
+
         for entry in entries:
             full = os.path.join(path, entry)
             if os.path.isdir(full):
-                node = self.tree.insert(parent, 'end', text=entry, values=(full, 'dir'))
-                # optionally populate on open
-            elif entry.lower().endswith('.md'):
-                self.tree.insert(parent, 'end', text=entry, values=(full, 'file'))
+                if self._has_md_files(full):
+                    dirs.append((entry, full))
+            elif entry.lower().endswith('.md') and not entry.startswith('_'):
+                files.append((entry, full))
+
+        for entry, full in dirs:
+            self.tree.insert(parent, 'end', text=entry, values=(full, 'dir'))
+        for entry, full in files:
+            name = os.path.splitext(entry)[0]
+            self.tree.insert(parent, 'end', text=name, values=(full, 'file'))
+
+    def _has_md_files(self, path: str) -> bool:
+        """Return True if directory contains markdown files (recursively)."""
+        for root, dirs, files in os.walk(path):
+            for f in files:
+                if f.lower().endswith('.md') and not f.startswith('_'):
+                    return True
+        return False
 
     def _on_open_node(self, event):
         item = self.tree.focus()
