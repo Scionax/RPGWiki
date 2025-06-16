@@ -59,10 +59,9 @@ class SearchPage(QWidget):
         for idx, item in enumerate(self.results[:9], 1):
             filename = item.file.split("/")[-1]
             line = (
-                f"<p><a href='{idx-1}' style='text-decoration:none'>"
-                f"<span style='float:right; background-color:#eef; padding:1px 4px; border-radius:3px'>"
-                f"{filename}</span>"
-                f"<span style='font-size:18px; font-weight:bold'>{item.text}</span>" 
+                f"<p><a href='{idx-1}' style='display:block; text-decoration:none; position:relative'>"
+                f"<span style='font-size:18px; font-weight:bold'>{item.text}</span>"
+                f"<span style='position:absolute; right:0; background-color:#eef; padding:1px 4px; border-radius:3px'>{filename}</span>"
                 f"</a><br>"
                 f"<span style='font-size:12px'>{item.preview}</span></p>"
             )
