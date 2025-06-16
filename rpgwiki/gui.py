@@ -65,7 +65,7 @@ class WikiApp(QMainWindow):
             if event.key() == Qt.Key_Right:
                 self.go_forward()
                 return True
-            if event.key() in (Qt.Key_Space, Qt.Key_Up):
+            if event.key() in (Qt.Key_Tab, Qt.Key_Up):
                 if isinstance(obj, QLineEdit):
                     return False
                 self.show_search()

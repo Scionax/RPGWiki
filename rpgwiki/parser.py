@@ -115,13 +115,25 @@ def scan_headers(folder: str) -> List[HeaderEntry]:
             for lineno, line in enumerate(lines, 1):
                 if line.lstrip().startswith('#'):
                     text, _ = parse_header(line)
-                    snippet = ' '.join(l.strip() for l in lines[lineno:lineno + 3])
+                    after = ' '.join(l.strip() for l in lines[lineno:])
+                    after = ' '.join(after.split())
+                    if len(after) <= 160:
+                        preview = after
+                    else:
+                        end = after.find('.', 160)
+                        if end == -1 or end > 220:
+                            end = 220
+                            preview = after[:end].rstrip()
+                            if len(after) > end:
+                                preview += '...'
+                        else:
+                            preview = after[: end + 1]
                     headers.append(
                         HeaderEntry(
                             file=path,
                             line=lineno,
                             text=text,
-                            preview=snippet[:120],
+                            preview=preview,
                         )
                     )
     return headers
