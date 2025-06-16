@@ -1,0 +1,85 @@
+import os
+import re
+from dataclasses import dataclass
+from typing import Dict, Tuple, List
+
+@dataclass
+class KeywordTarget:
+    file: str
+    line: int
+    header: str
+
+# Regular expressions for parsing headers
+ASTERISK_RE = re.compile(r'\*([^*]+)\*')
+BANG_RE = re.compile(r'!([\w\s]+)')
+
+# '/s' plural suffix pattern
+PLURAL_RE = re.compile(r'(\b[^/]+)/s(\b)?', re.IGNORECASE)
+
+
+def parse_header(line: str) -> Tuple[str, List[str]]:
+    """Return visible header text and list of keywords."""
+    keywords: List[str] = []
+    text = line.strip().lstrip('#').strip()
+
+    # bang keywords
+    for m in BANG_RE.finditer(text):
+        kw = m.group(1).strip()
+        if kw:
+            keywords.append(kw)
+    text = BANG_RE.sub('', text).strip()
+
+    # asterisk keywords
+    for m in ASTERISK_RE.finditer(text):
+        kw = m.group(1).strip()
+        if kw:
+            keywords.append(kw)
+    text = ASTERISK_RE.sub(r'\1', text)
+
+    # plural keywords
+    def plural_repl(match: re.Match) -> str:
+        base = match.group(1)
+        keywords.append(base)
+        keywords.append(base + 's')
+        return base
+
+    text = PLURAL_RE.sub(plural_repl, text)
+
+    # synonym keywords with '/'
+    if '/' in text:
+        parts = [p.strip() for p in text.split('/')]
+        if len(parts) > 1:
+            text = parts[0]
+            for kw in parts:
+                if kw:
+                    keywords.append(kw)
+        else:
+            # handle trailing '/'
+            text = text.rstrip('/')
+            if text:
+                keywords.append(text)
+    else:
+        if text:
+            keywords.append(text)
+
+    keywords = [kw for kw in keywords if kw]
+    return text.strip(), keywords
+
+
+def scan_folder(folder: str) -> Dict[str, KeywordTarget]:
+    """Scan all md files in folder and return keyword map."""
+    keyword_map: Dict[str, KeywordTarget] = {}
+    for root, _, files in os.walk(folder):
+        for f in files:
+            if not f.lower().endswith('.md'):
+                continue
+            path = os.path.join(root, f)
+            with open(path, 'r', encoding='utf-8', errors='ignore') as fp:
+                for lineno, line in enumerate(fp, 1):
+                    if line.lstrip().startswith('#'):
+                        text, kws = parse_header(line)
+                        for kw in kws:
+                            if kw not in keyword_map:
+                                keyword_map[kw] = KeywordTarget(path, lineno, text)
+                            # duplicates ignored; could log warning
+    return keyword_map
