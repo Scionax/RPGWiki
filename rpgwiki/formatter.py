@@ -48,13 +48,17 @@ def format_content(content: str, keyword_map: Dict[str, KeywordTarget], config: 
     """Convert raw wiki text to HTML with links, wrapping and header styles."""
     keywords = sorted(keyword_map.keys(), key=len, reverse=True)
     lines_html: List[str] = []
-    for line in content.splitlines():
+    for lineno, line in enumerate(content.splitlines(), 1):
         stripped = line.lstrip()
         if stripped.startswith("#"):
             level = len(stripped) - len(stripped.lstrip("#"))
             text, _ = parse_header(line)
             size = HEADER_SIZES.get(level, 12)
-            line_html = f'<span style="font-size:{size}px; font-weight:bold">{escape(text)}</span>'
+            anchor = f"ln{lineno}"
+            line_html = (
+                f'<span id="{anchor}" style="font-size:{size}px; font-weight:bold">'
+                f"{escape(text)}</span>"
+            )
         else:
             line_html = _apply_links_to_line(line, keywords, config.case_sensitive)
         lines_html.append(line_html)
