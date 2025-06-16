@@ -43,13 +43,20 @@ class WikiApp(QMainWindow):
         self.installEventFilter(self)
         self._load_saved_folders()
 
-    # Event filter for mouse back/forward buttons
+    # Event filter for mouse and keyboard navigation
     def eventFilter(self, obj, event):  # type: ignore[override]
         if event.type() == QEvent.MouseButtonPress:
             if event.button() in (Qt.BackButton, Qt.XButton1):
                 self.go_back()
                 return True
             if event.button() in (Qt.ForwardButton, Qt.XButton2):
+                self.go_forward()
+                return True
+        if event.type() == QEvent.KeyPress:
+            if event.key() == Qt.Key_Left:
+                self.go_back()
+                return True
+            if event.key() == Qt.Key_Right:
                 self.go_forward()
                 return True
         return super().eventFilter(obj, event)
@@ -119,8 +126,8 @@ class WikiApp(QMainWindow):
     def _add_folder_to_tree(self, folder: str, tag: str) -> None:
         node = QTreeWidgetItem(self.tree, [f"{tag}: {folder}"])
         node.setData(0, Qt.UserRole, (folder, "dir"))
-        node.setExpanded(True)
         self._populate_tree(node, folder)
+        node.setExpanded(True)
 
     def _populate_tree(self, parent: QTreeWidgetItem, path: str) -> None:
         try:
@@ -141,6 +148,7 @@ class WikiApp(QMainWindow):
         for entry, full in dirs:
             child = QTreeWidgetItem(parent, [entry])
             child.setData(0, Qt.UserRole, (full, "dir"))
+            child.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
         for entry, full in files:
             name = os.path.splitext(entry)[0]
             child = QTreeWidgetItem(parent, [name])
