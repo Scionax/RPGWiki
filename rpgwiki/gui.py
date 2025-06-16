@@ -2,8 +2,8 @@ import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from typing import Dict
-from parser import scan_folder, KeywordTarget
-from config import Config, load_config, save_config
+from .parser import scan_folder, KeywordTarget
+from .config import Config, load_config, save_config
 
 class WikiApp(tk.Tk):
     def __init__(self):
@@ -158,6 +158,12 @@ class WikiApp(tk.Tk):
             if tag == 'link':
                 word = self.text.get(index, f"{index} wordend")
                 target = self.keyword_map.get(word)
+                if not target and not self.config_data.case_sensitive:
+                    lower = word.lower()
+                    for kw, tgt in self.keyword_map.items():
+                        if kw.lower() == lower:
+                            target = tgt
+                            break
                 if target:
                     self.open_file(target.file)
                     self.text.see(f"{target.line}.0")
