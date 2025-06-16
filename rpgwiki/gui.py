@@ -1,6 +1,5 @@
 import os
 import sys
-from html import escape
 from typing import Dict
 
 from PyQt5.QtCore import Qt, QEvent, QUrl
@@ -17,6 +16,8 @@ from PyQt5.QtWidgets import (
     QAction,
     QToolBar,
 )
+
+from .formatter import format_content
 
 from .parser import scan_folder, KeywordTarget
 from .config import Config, load_config, save_config
@@ -214,8 +215,9 @@ class WikiApp(QMainWindow):
             QMessageBox.critical(self, "Error", str(e))
             return
 
-        self._display_content(content)
-        self._apply_links(content)
+        html = format_content(content, self.keyword_map, self.config_data)
+        self.text.setHtml(html)
+        self.text.document().clearUndoRedoStacks()
         self._update_nav_actions()
 
     def go_back(self) -> None:
@@ -232,56 +234,6 @@ class WikiApp(QMainWindow):
                 self.history_back.append(self.current_file)
             self.open_file(nxt, add_history=False)
 
-    # Display plain text before applying HTML links
-    def _display_content(self, content: str) -> None:
-        html = "<pre>" + escape(content) + "</pre>"
-        self.text.setHtml(html)
-
-    def _apply_links(self, content: str) -> None:
-        keywords = sorted(self.keyword_map.keys(), key=len, reverse=True)
-        lower_content = content.lower()
-        occupied = [False] * len(content)
-        ranges: list[tuple[int, int, str]] = []
-        for kw in keywords:
-            search_kw = kw if self.config_data.case_sensitive else kw.lower()
-            start = 0
-            while True:
-                idx = (
-                    content.find(kw, start)
-                    if self.config_data.case_sensitive
-                    else lower_content.find(search_kw, start)
-                )
-                if idx == -1:
-                    break
-                end = idx + len(kw)
-                line_start = content.rfind("\n", 0, idx) + 1
-                line_end = content.find("\n", line_start)
-                line_text = content[line_start : line_end if line_end != -1 else len(content)]
-                if line_text.lstrip().startswith("#"):
-                    start = end
-                    continue
-                before_valid = True
-                if idx > 0 and _is_word_char(content[idx - 1]):
-                    before_valid = False
-                after_valid = True
-                if end < len(content) and _is_word_char(content[end]):
-                    after_valid = False
-                if before_valid and after_valid and not any(occupied[idx:end]):
-                    ranges.append((idx, end, kw))
-                    for i in range(idx, end):
-                        occupied[i] = True
-                start = end
-        ranges.sort()
-        html_parts = []
-        last = 0
-        for start, end, kw in ranges:
-            html_parts.append(escape(content[last:start]))
-            html_parts.append(f'<a href="{escape(kw)}">{escape(content[start:end])}</a>')
-            last = end
-        html_parts.append(escape(content[last:]))
-        html = "<pre>" + "".join(html_parts) + "</pre>"
-        self.text.setHtml(html)
-        self.text.document().clearUndoRedoStacks()
 
     def _on_anchor_clicked(self, url: QUrl) -> None:
         word = url.toString()
@@ -297,7 +249,8 @@ class WikiApp(QMainWindow):
             block = self.text.document().findBlockByLineNumber(target.line - 1)
             cursor = QTextCursor(block)
             self.text.setTextCursor(cursor)
-            self.text.ensureCursorVisible()
+            bar = self.text.verticalScrollBar()
+            bar.setValue(self.text.cursorRect(cursor).top())
 
 
 def main() -> None:
