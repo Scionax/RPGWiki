@@ -5,6 +5,8 @@ This project provides a simple desktop wiki for managing RPG campaigns and world
 ## Features
 - Load separate world and campaign directories of Markdown files.
 - Automatically build a keyword map from Markdown headers using special rules.
+  A header must contain a symbol such as `!`, `*`, `foo/s` or `/` to create
+  keywords. Plain headers without symbols are ignored.
 - Clickable links inside the text area jump to linked files and sections.
 - Persistent configuration for recently loaded folders and case sensitivity.
 
