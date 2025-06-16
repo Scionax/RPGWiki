@@ -86,6 +86,10 @@ class WikiApp(QMainWindow):
         rescan_action.triggered.connect(self.rescan)
         file_menu.addAction(rescan_action)
 
+        search_action = QAction("Search", self)
+        search_action.triggered.connect(self.show_search)
+        file_menu.addAction(search_action)
+
         file_menu.addSeparator()
 
         exit_action = QAction("Exit", self)

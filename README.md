@@ -9,6 +9,8 @@ This project provides a simple desktop wiki for managing RPG campaigns and world
   keywords. Plain headers without symbols are ignored.
 - Clickable links inside the text area jump to linked files and sections.
 - Persistent configuration for recently loaded folders and case sensitivity.
+- Search headers via `File -> Search` or by pressing <kbd>Space</kbd> or
+  <kbd>Up</kbd> during normal use.
 
 ## Running
 Install Python 3.11+ and `PyQt5` then run the application with:
