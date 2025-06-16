@@ -156,7 +156,8 @@ class WikiApp(tk.Tk):
         index = self.text.index("@%d,%d" % (event.x, event.y))
         for tag in self.text.tag_names(index):
             if tag == 'link':
-                word = self.text.get(index, f"{index} wordend")
+                start, end = self.text.tag_prevrange('link', index + '+1c')
+                word = self.text.get(start, end)
                 target = self.keyword_map.get(word)
                 if not target and not self.config_data.case_sensitive:
                     lower = word.lower()

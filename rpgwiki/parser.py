@@ -21,12 +21,14 @@ def parse_header(line: str) -> Tuple[str, List[str]]:
     """Return visible header text and list of keywords."""
     keywords: List[str] = []
     text = line.strip().lstrip('#').strip()
+    used_symbol = False
 
     # bang keywords
     for m in BANG_RE.finditer(text):
         kw = m.group(1).strip()
         if kw:
             keywords.append(kw)
+            used_symbol = True
     text = BANG_RE.sub('', text).strip()
 
     # asterisk keywords
@@ -34,19 +36,23 @@ def parse_header(line: str) -> Tuple[str, List[str]]:
         kw = m.group(1).strip()
         if kw:
             keywords.append(kw)
+            used_symbol = True
     text = ASTERISK_RE.sub(r'\1', text)
 
     # plural keywords
     def plural_repl(match: re.Match) -> str:
+        nonlocal used_symbol
         base = match.group(1)
         keywords.append(base)
         keywords.append(base + 's')
+        used_symbol = True
         return base
 
     text = PLURAL_RE.sub(plural_repl, text)
 
     # synonym keywords with '/'
     if '/' in text:
+        used_symbol = True
         parts = [p.strip() for p in text.split('/')]
         if len(parts) > 1:
             text = parts[0]
@@ -59,7 +65,7 @@ def parse_header(line: str) -> Tuple[str, List[str]]:
             if text:
                 keywords.append(text)
     else:
-        if text:
+        if used_symbol and text:
             keywords.append(text)
 
     keywords = [kw for kw in keywords if kw]
