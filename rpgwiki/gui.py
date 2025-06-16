@@ -1,105 +1,128 @@
 import os
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+import sys
+from html import escape
 from typing import Dict
+
+from PyQt5.QtCore import Qt, QEvent, QUrl
+from PyQt5.QtGui import QTextCursor
+from PyQt5.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QTextBrowser,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QFileDialog,
+    QMessageBox,
+    QSplitter,
+    QAction,
+    QToolBar,
+)
+
 from .parser import scan_folder, KeywordTarget
 from .config import Config, load_config, save_config
 
 
 def _is_word_char(ch: str) -> bool:
-    """Return True if character should be considered part of a word."""
-    return ch.isalnum() or ch == '_'
+    return ch.isalnum() or ch == "_"
 
-class WikiApp(tk.Tk):
-    def __init__(self):
+
+class WikiApp(QMainWindow):
+    def __init__(self) -> None:
         super().__init__()
-        self.title("RPG Wiki")
-        self.geometry('1000x600')
+        self.setWindowTitle("RPG Wiki")
+        self.resize(1000, 600)
 
         self.config_data: Config = load_config()
         self.keyword_map: Dict[str, KeywordTarget] = {}
 
-        # navigation history
         self.history_back: list[str] = []
         self.history_forward: list[str] = []
         self.current_file: str | None = None
 
-        # mouse back/forward bindings (may not exist on all platforms)
-        self._bind_navigation_buttons()
-
         self._build_gui()
+        self.installEventFilter(self)
         self._load_saved_folders()
 
-    def _bind_navigation_buttons(self) -> None:
-        """Bind mouse navigation buttons if supported by Tk."""
-        bindings = [('<Button-8>', '<Button-9>'), ('<XButton1>', '<XButton2>')]
-        for back_seq, fwd_seq in bindings:
-            try:
-                self.bind(back_seq, lambda e, seq=back_seq: self._on_nav_button(seq, True))
-                self.bind(fwd_seq, lambda e, seq=fwd_seq: self._on_nav_button(seq, False))
-                print(f"Bound navigation buttons: back {back_seq}, forward {fwd_seq}")
-                return
-            except tk.TclError:
-                continue
-        print("Navigation buttons not supported")
+    # Event filter for mouse back/forward buttons
+    def eventFilter(self, obj, event):  # type: ignore[override]
+        if event.type() == QEvent.MouseButtonPress:
+            if event.button() in (Qt.BackButton, Qt.XButton1):
+                self.go_back()
+                return True
+            if event.button() in (Qt.ForwardButton, Qt.XButton2):
+                self.go_forward()
+                return True
+        return super().eventFilter(obj, event)
 
-    def _on_nav_button(self, seq: str, back: bool) -> None:
-        """Handle mouse navigation button press."""
-        print(f"Navigation button pressed: {seq} -> {'back' if back else 'forward'}")
-        if back:
-            self.go_back()
-        else:
-            self.go_forward()
+    def _build_gui(self) -> None:
+        menubar = self.menuBar()
+        file_menu = menubar.addMenu("File")
 
-    def _build_gui(self):
-        self.columnconfigure(1, weight=1)
-        self.rowconfigure(0, weight=1)
+        load_world = QAction("Load World Folder", self)
+        load_world.triggered.connect(self.load_world)
+        file_menu.addAction(load_world)
 
-        # Menu
-        menubar = tk.Menu(self)
-        file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label='Load World Folder', command=self.load_world)
-        file_menu.add_command(label='Load Campaign Folder', command=self.load_campaign)
-        file_menu.add_separator()
-        file_menu.add_command(label='Rescan', command=self.rescan)
-        file_menu.add_separator()
-        file_menu.add_command(label='Exit', command=self.destroy)
-        menubar.add_cascade(label='File', menu=file_menu)
-        self.config(menu=menubar)
+        load_campaign = QAction("Load Campaign Folder", self)
+        load_campaign.triggered.connect(self.load_campaign)
+        file_menu.addAction(load_campaign)
 
-        # Treeview navigation
-        self.tree = ttk.Treeview(self)
-        self.tree.bind('<<TreeviewOpen>>', self._on_open_node)
-        self.tree.bind('<<TreeviewSelect>>', self._on_select)
-        self.tree.grid(row=0, column=0, sticky='ns')
+        file_menu.addSeparator()
 
-        # Scroll for tree
-        tree_scroll = ttk.Scrollbar(self, orient='vertical', command=self.tree.yview)
-        self.tree.configure(yscrollcommand=tree_scroll.set)
-        tree_scroll.grid(row=0, column=0, sticky='nse')
+        rescan_action = QAction("Rescan", self)
+        rescan_action.triggered.connect(self.rescan)
+        file_menu.addAction(rescan_action)
 
-        # Content text
-        self.text = tk.Text(self, wrap='word')
-        self.text.grid(row=0, column=1, sticky='nsew')
-        self.text.tag_config('link', foreground='blue', underline=1)
-        self.text.tag_bind('link', '<Button-1>', self._on_link_click)
+        file_menu.addSeparator()
 
-        text_scroll = ttk.Scrollbar(self, orient='vertical', command=self.text.yview)
-        self.text.configure(yscrollcommand=text_scroll.set)
-        text_scroll.grid(row=0, column=2, sticky='ns')
+        exit_action = QAction("Exit", self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
 
-    def _load_saved_folders(self):
+        toolbar = QToolBar()
+        self.addToolBar(toolbar)
+
+        self.back_action = QAction("Back", self)
+        self.back_action.triggered.connect(self.go_back)
+        toolbar.addAction(self.back_action)
+
+        self.forward_action = QAction("Forward", self)
+        self.forward_action.triggered.connect(self.go_forward)
+        toolbar.addAction(self.forward_action)
+
+        splitter = QSplitter()
+        self.tree = QTreeWidget()
+        self.tree.setHeaderHidden(True)
+        self.tree.itemExpanded.connect(self._on_expand)
+        self.tree.itemClicked.connect(self._on_select)
+        splitter.addWidget(self.tree)
+
+        self.text = QTextBrowser()
+        self.text.setOpenExternalLinks(False)
+        self.text.anchorClicked.connect(self._on_anchor_clicked)
+        splitter.addWidget(self.text)
+
+        splitter.setStretchFactor(1, 1)
+        self.setCentralWidget(splitter)
+        self._update_nav_actions()
+
+    def _update_nav_actions(self) -> None:
+        self.back_action.setEnabled(bool(self.history_back))
+        self.forward_action.setEnabled(bool(self.history_forward))
+
+    def _load_saved_folders(self) -> None:
         if self.config_data.world_dir:
-            self._add_folder_to_tree(self.config_data.world_dir, 'World')
+            self._add_folder_to_tree(self.config_data.world_dir, "World")
         if self.config_data.campaign_dir:
-            self._add_folder_to_tree(self.config_data.campaign_dir, 'Campaign')
+            self._add_folder_to_tree(self.config_data.campaign_dir, "Campaign")
         self.rescan()
 
-    def _add_folder_to_tree(self, folder: str, tag: str):
-        node = self.tree.insert('', 'end', text=f'{tag}: {folder}', open=True, values=(folder, 'dir'))
+    def _add_folder_to_tree(self, folder: str, tag: str) -> None:
+        node = QTreeWidgetItem(self.tree, [f"{tag}: {folder}"])
+        node.setData(0, Qt.UserRole, (folder, "dir"))
+        node.setExpanded(True)
         self._populate_tree(node, folder)
 
-    def _populate_tree(self, parent, path):
+    def _populate_tree(self, parent: QTreeWidgetItem, path: str) -> None:
         try:
             entries = sorted(os.listdir(path))
         except OSError:
@@ -107,90 +130,85 @@ class WikiApp(tk.Tk):
 
         dirs: list[tuple[str, str]] = []
         files: list[tuple[str, str]] = []
-
         for entry in entries:
             full = os.path.join(path, entry)
             if os.path.isdir(full):
                 if self._has_md_files(full):
                     dirs.append((entry, full))
-            elif entry.lower().endswith('.md') and not entry.startswith('_'):
+            elif entry.lower().endswith(".md") and not entry.startswith("_"):
                 files.append((entry, full))
 
         for entry, full in dirs:
-            self.tree.insert(parent, 'end', text=entry, values=(full, 'dir'))
+            child = QTreeWidgetItem(parent, [entry])
+            child.setData(0, Qt.UserRole, (full, "dir"))
         for entry, full in files:
             name = os.path.splitext(entry)[0]
-            self.tree.insert(parent, 'end', text=name, values=(full, 'file'))
+            child = QTreeWidgetItem(parent, [name])
+            child.setData(0, Qt.UserRole, (full, "file"))
 
     def _has_md_files(self, path: str) -> bool:
-        """Return True if directory contains markdown files (recursively)."""
-        for root, dirs, files in os.walk(path):
+        for root, _, files in os.walk(path):
             for f in files:
-                if f.lower().endswith('.md') and not f.startswith('_'):
+                if f.lower().endswith(".md") and not f.startswith("_"):
                     return True
         return False
 
-    def _on_open_node(self, event):
-        item = self.tree.focus()
-        path, typ = self.tree.item(item, 'values')
-        if typ == 'dir':
-            if not self.tree.get_children(item):
-                self._populate_tree(item, path)
+    def _on_expand(self, item: QTreeWidgetItem) -> None:
+        path, typ = item.data(0, Qt.UserRole)
+        if typ == "dir" and item.childCount() == 0:
+            self._populate_tree(item, path)
 
-    def _on_select(self, event):
-        item = self.tree.focus()
-        if not item:
-            return
-        path, typ = self.tree.item(item, 'values')
-        if typ == 'file':
+    def _on_select(self, item: QTreeWidgetItem, column: int) -> None:
+        path, typ = item.data(0, Qt.UserRole)
+        if typ == "file":
             self.open_file(path)
 
-    def load_world(self):
-        folder = filedialog.askdirectory()
+    def load_world(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "Select World Folder")
         if folder:
             self.config_data.world_dir = folder
-            self.tree.delete(*self.tree.get_children())
-            self._add_folder_to_tree(folder, 'World')
+            self.tree.clear()
+            self._add_folder_to_tree(folder, "World")
             if self.config_data.campaign_dir:
-                self._add_folder_to_tree(self.config_data.campaign_dir, 'Campaign')
+                self._add_folder_to_tree(self.config_data.campaign_dir, "Campaign")
             self.rescan()
             save_config(self.config_data)
 
-    def load_campaign(self):
-        folder = filedialog.askdirectory()
+    def load_campaign(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "Select Campaign Folder")
         if folder:
             self.config_data.campaign_dir = folder
-            self.tree.delete(*self.tree.get_children())
+            self.tree.clear()
             if self.config_data.world_dir:
-                self._add_folder_to_tree(self.config_data.world_dir, 'World')
-            self._add_folder_to_tree(folder, 'Campaign')
+                self._add_folder_to_tree(self.config_data.world_dir, "World")
+            self._add_folder_to_tree(folder, "Campaign")
             self.rescan()
             save_config(self.config_data)
 
-    def rescan(self):
+    def rescan(self) -> None:
         self.keyword_map.clear()
         if self.config_data.world_dir:
             self.keyword_map.update(scan_folder(self.config_data.world_dir))
         if self.config_data.campaign_dir:
             camp_map = scan_folder(self.config_data.campaign_dir)
-            # campaign keywords override world
             self.keyword_map.update(camp_map)
 
-    def open_file(self, path: str, add_history: bool = True):
+    def open_file(self, path: str, add_history: bool = True) -> None:
         if add_history and self.current_file and path != self.current_file:
             self.history_back.append(self.current_file)
             self.history_forward.clear()
         self.current_file = path
 
-        self.text.delete('1.0', tk.END)
         try:
-            with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
         except OSError as e:
-            messagebox.showerror('Error', str(e))
+            QMessageBox.critical(self, "Error", str(e))
             return
-        self.text.insert('1.0', content)
+
+        self._display_content(content)
         self._apply_links(content)
+        self._update_nav_actions()
 
     def go_back(self) -> None:
         if self.history_back:
@@ -206,68 +224,80 @@ class WikiApp(tk.Tk):
                 self.history_back.append(self.current_file)
             self.open_file(nxt, add_history=False)
 
-    def _apply_links(self, content: str):
-        self.text.tag_remove('link', '1.0', tk.END)
-        # sort keywords by length descending
+    # Display plain text before applying HTML links
+    def _display_content(self, content: str) -> None:
+        html = "<pre>" + escape(content) + "</pre>"
+        self.text.setHtml(html)
+
+    def _apply_links(self, content: str) -> None:
         keywords = sorted(self.keyword_map.keys(), key=len, reverse=True)
-        case = 0 if self.config_data.case_sensitive else 1
+        lower_content = content.lower()
+        occupied = [False] * len(content)
+        ranges: list[tuple[int, int, str]] = []
         for kw in keywords:
-            idx = '1.0'
+            search_kw = kw if self.config_data.case_sensitive else kw.lower()
+            start = 0
             while True:
-                idx = self.text.search(kw, idx, nocase=case, stopindex=tk.END)
-                if not idx:
+                idx = (
+                    content.find(kw, start)
+                    if self.config_data.case_sensitive
+                    else lower_content.find(search_kw, start)
+                )
+                if idx == -1:
                     break
-                end = f"{idx}+{len(kw)}c"
-
-                # skip headers
-                line_start = self.text.index(f"{idx} linestart")
-                line_text = self.text.get(line_start, f"{line_start} lineend")
-                if line_text.lstrip().startswith('#'):
-                    idx = end
+                end = idx + len(kw)
+                line_start = content.rfind("\n", 0, idx) + 1
+                line_end = content.find("\n", line_start)
+                line_text = content[line_start : line_end if line_end != -1 else len(content)]
+                if line_text.lstrip().startswith("#"):
+                    start = end
                     continue
-
-                # ensure full word/phrase boundaries
                 before_valid = True
-                if self.text.compare(idx, '!=', '1.0'):
-                    ch_before = self.text.get(f"{idx}-1c")
-                    if _is_word_char(ch_before):
-                        before_valid = False
-                ch_after = self.text.get(end)
+                if idx > 0 and _is_word_char(content[idx - 1]):
+                    before_valid = False
                 after_valid = True
-                if ch_after and _is_word_char(ch_after):
+                if end < len(content) and _is_word_char(content[end]):
                     after_valid = False
+                if before_valid and after_valid and not any(occupied[idx:end]):
+                    ranges.append((idx, end, kw))
+                    for i in range(idx, end):
+                        occupied[i] = True
+                start = end
+        ranges.sort()
+        html_parts = []
+        last = 0
+        for start, end, kw in ranges:
+            html_parts.append(escape(content[last:start]))
+            html_parts.append(f'<a href="{escape(kw)}">{escape(content[start:end])}</a>')
+            last = end
+        html_parts.append(escape(content[last:]))
+        html = "<pre>" + "".join(html_parts) + "</pre>"
+        self.text.setHtml(html)
+        self.text.document().clearUndoRedoStacks()
 
-                if before_valid and after_valid:
-                    self.text.tag_add('link', idx, end)
-
-                idx = end
-
-        self.text.tag_bind('link', '<Enter>', lambda e: self.text.config(cursor="hand2"))
-        self.text.tag_bind('link', '<Leave>', lambda e: self.text.config(cursor=""))
-
-    def _on_link_click(self, event):
-        index = self.text.index("@%d,%d" % (event.x, event.y))
-        for tag in self.text.tag_names(index):
-            if tag == 'link':
-                start, end = self.text.tag_prevrange('link', index + '+1c')
-                word = self.text.get(start, end)
-                target = self.keyword_map.get(word)
-                if not target and not self.config_data.case_sensitive:
-                    lower = word.lower()
-                    for kw, tgt in self.keyword_map.items():
-                        if kw.lower() == lower:
-                            target = tgt
-                            break
-                if target:
-                    self.open_file(target.file)
-                    self.text.see(f"{target.line}.0")
-                break
+    def _on_anchor_clicked(self, url: QUrl) -> None:
+        word = url.toString()
+        target = self.keyword_map.get(word)
+        if not target and not self.config_data.case_sensitive:
+            lower = word.lower()
+            for kw, tgt in self.keyword_map.items():
+                if kw.lower() == lower:
+                    target = tgt
+                    break
+        if target:
+            self.open_file(target.file)
+            block = self.text.document().findBlockByLineNumber(target.line - 1)
+            cursor = QTextCursor(block)
+            self.text.setTextCursor(cursor)
+            self.text.ensureCursorVisible()
 
 
-def main():
-    app = WikiApp()
-    app.mainloop()
+def main() -> None:
+    app = QApplication(sys.argv)
+    win = WikiApp()
+    win.show()
+    sys.exit(app.exec_())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

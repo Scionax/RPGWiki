@@ -11,7 +11,7 @@ This project provides a simple desktop wiki for managing RPG campaigns and world
 - Persistent configuration for recently loaded folders and case sensitivity.
 
 ## Running
-Install Python 3.11+ and run the application with:
+Install Python 3.11+ and `PyQt5` then run the application with:
 
 ```bash
 python main.py
@@ -23,4 +23,4 @@ You can also run it as a module:
 python -m rpgwiki
 ```
 
-Note that the GUI requires a display environment (Tkinter).
+Note that the GUI requires a display environment (PyQt5).
