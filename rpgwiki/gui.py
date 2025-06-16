@@ -5,6 +5,11 @@ from typing import Dict
 from .parser import scan_folder, KeywordTarget
 from .config import Config, load_config, save_config
 
+
+def _is_word_char(ch: str) -> bool:
+    """Return True if character should be considered part of a word."""
+    return ch.isalnum() or ch == '_'
+
 class WikiApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -13,6 +18,15 @@ class WikiApp(tk.Tk):
 
         self.config_data: Config = load_config()
         self.keyword_map: Dict[str, KeywordTarget] = {}
+
+        # navigation history
+        self.history_back: list[str] = []
+        self.history_forward: list[str] = []
+        self.current_file: str | None = None
+
+        # mouse back/forward bindings
+        self.bind('<Button-8>', lambda e: self.go_back())
+        self.bind('<Button-9>', lambda e: self.go_forward())
 
         self._build_gui()
         self._load_saved_folders()
@@ -124,7 +138,12 @@ class WikiApp(tk.Tk):
             # campaign keywords override world
             self.keyword_map.update(camp_map)
 
-    def open_file(self, path: str):
+    def open_file(self, path: str, add_history: bool = True):
+        if add_history and self.current_file and path != self.current_file:
+            self.history_back.append(self.current_file)
+            self.history_forward.clear()
+        self.current_file = path
+
         self.text.delete('1.0', tk.END)
         try:
             with open(path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -134,6 +153,20 @@ class WikiApp(tk.Tk):
             return
         self.text.insert('1.0', content)
         self._apply_links(content)
+
+    def go_back(self) -> None:
+        if self.history_back:
+            last = self.history_back.pop()
+            if self.current_file:
+                self.history_forward.append(self.current_file)
+            self.open_file(last, add_history=False)
+
+    def go_forward(self) -> None:
+        if self.history_forward:
+            nxt = self.history_forward.pop()
+            if self.current_file:
+                self.history_back.append(self.current_file)
+            self.open_file(nxt, add_history=False)
 
     def _apply_links(self, content: str):
         self.text.tag_remove('link', '1.0', tk.END)
@@ -147,10 +180,32 @@ class WikiApp(tk.Tk):
                 if not idx:
                     break
                 end = f"{idx}+{len(kw)}c"
-                self.text.tag_add('link', idx, end)
-                self.text.tag_bind('link', '<Enter>', lambda e: self.text.config(cursor="hand2"))
-                self.text.tag_bind('link', '<Leave>', lambda e: self.text.config(cursor=""))
+
+                # skip headers
+                line_start = self.text.index(f"{idx} linestart")
+                line_text = self.text.get(line_start, f"{line_start} lineend")
+                if line_text.lstrip().startswith('#'):
+                    idx = end
+                    continue
+
+                # ensure full word/phrase boundaries
+                before_valid = True
+                if self.text.compare(idx, '!=', '1.0'):
+                    ch_before = self.text.get(f"{idx}-1c")
+                    if _is_word_char(ch_before):
+                        before_valid = False
+                ch_after = self.text.get(end)
+                after_valid = True
+                if ch_after and _is_word_char(ch_after):
+                    after_valid = False
+
+                if before_valid and after_valid:
+                    self.text.tag_add('link', idx, end)
+
                 idx = end
+
+        self.text.tag_bind('link', '<Enter>', lambda e: self.text.config(cursor="hand2"))
+        self.text.tag_bind('link', '<Leave>', lambda e: self.text.config(cursor=""))
 
     def _on_link_click(self, event):
         index = self.text.index("@%d,%d" % (event.x, event.y))
