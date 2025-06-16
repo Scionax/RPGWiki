@@ -1,51 +1,38 @@
-"""Widget for searching headers across loaded folders."""
+"""Search page displayed inside the main content area."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import List
 
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (
-    QDialog,
-    QVBoxLayout,
-    QLineEdit,
-    QListWidget,
-    QListWidgetItem,
-)
+from PyQt5.QtCore import Qt, QUrl
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QTextBrowser
 
 from .parser import HeaderEntry
 
 
-@dataclass
-class SearchResult:
-    entry: HeaderEntry
-
-
-class SearchDialog(QDialog):
-    """Modal dialog used for header search."""
+class SearchPage(QWidget):
+    """Widget used for searching headers within the loaded folders."""
 
     def __init__(self, parent) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Search Headers")
-        self.setModal(True)
-
         layout = QVBoxLayout(self)
+
         self.edit = QLineEdit()
         self.edit.returnPressed.connect(self.perform_search)
         layout.addWidget(self.edit)
 
-        self.list = QListWidget()
-        self.list.itemActivated.connect(self._activate)
-        layout.addWidget(self.list)
+        self.browser = QTextBrowser()
+        self.browser.setOpenExternalLinks(False)
+        self.browser.anchorClicked.connect(self._activate)
+        layout.addWidget(self.browser)
 
         self.results: List[HeaderEntry] = []
 
-    def open(self) -> None:  # type: ignore[override]
+    def open(self) -> None:
+        """Prepare the widget for a new search and focus the edit box."""
         self.edit.clear()
-        self.list.clear()
+        self.browser.clear()
         self.results = []
-        super().open()
         self.edit.setFocus()
 
     def perform_search(self) -> None:
@@ -55,7 +42,6 @@ class SearchDialog(QDialog):
         app = self.parent()  # WikiApp
         case = app.config_data.case_sensitive
         search = query if case else query.lower()
-        self.list.clear()
         full: List[HeaderEntry] = []
         partial: List[HeaderEntry] = []
         for entry in app.headers:
@@ -66,35 +52,27 @@ class SearchDialog(QDialog):
                 partial.append(entry)
         partial = partial[:10]
         self.results = full + partial
+        lines: List[str] = []
         for idx, item in enumerate(self.results[:9], 1):
-            display = (
-                f"{idx}. <span style='background-color:#eef; padding:1px 4px; "
-                f"border-radius:3px'>{item.file.split('/')[-1]}</span> "
-                f"<b>{item.text}</b> - {item.preview}"
+            line = (
+                f"<p><a href='{idx-1}' style='text-decoration:none'>"
+                f"<span style='background-color:#eef; padding:1px 4px; border-radius:3px'>"
+                f"{item.file.split('/')[-1]}</span> <b>{item.text}</b></a> - {item.preview}</p>"
             )
-            lw_item = QListWidgetItem()
-            lw_item.setData(Qt.UserRole, item)
-            lw_item.setText(display)
-            lw_item.setTextAlignment(Qt.AlignLeft)
-            self.list.addItem(lw_item)
+            lines.append(line)
+        self.browser.setHtml("\n".join(lines))
 
-    def keyPressEvent(self, event):  # type: ignore[override]
-        if Qt.Key_1 <= event.key() <= Qt.Key_9:
-            idx = event.key() - Qt.Key_1
-            if idx < len(self.results):
-                self._open(self.results[idx])
-                return
-        super().keyPressEvent(event)
-
-    def _activate(self, item: QListWidgetItem) -> None:
-        entry = item.data(Qt.UserRole)
-        if entry:
-            self._open(entry)
+    def _activate(self, url: QUrl) -> None:
+        try:
+            idx = int(url.toString())
+        except ValueError:
+            return
+        if 0 <= idx < len(self.results):
+            self._open(self.results[idx])
 
     def _open(self, entry: HeaderEntry) -> None:
-        app = self.parent()
+        app = self.parent()  # WikiApp
         app.open_file(entry.file)
         anchor = f"ln{entry.line}"
         app.text.scrollToAnchor(anchor)
-        self.close()
-
+        app.show_content()
