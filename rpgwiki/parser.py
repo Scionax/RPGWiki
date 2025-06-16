@@ -77,7 +77,7 @@ def scan_folder(folder: str) -> Dict[str, KeywordTarget]:
     keyword_map: Dict[str, KeywordTarget] = {}
     for root, _, files in os.walk(folder):
         for f in files:
-            if not f.lower().endswith('.md'):
+            if not f.lower().endswith('.md') or f.startswith('_'):
                 continue
             path = os.path.join(root, f)
             with open(path, 'r', encoding='utf-8', errors='ignore') as fp:
